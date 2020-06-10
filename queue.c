@@ -34,8 +34,8 @@ void Enqueue(struct registration *reg, struct Queue *Q){
 
 	p = (struct queue_node *)malloc(sizeof(struct queue_node ));
 	if(p == NULL){
-		printf("Error no memory");
-	} 
+        printf("Error malloc");
+    } 
 
 
     p->reg = reg;
@@ -60,7 +60,7 @@ struct registration * Dequeue(struct Queue *Q){
 		if(Q->front == NULL)
 			Q->back = NULL;
 
-        free(temp);
+        //free(temp);
 	}
 
     return reg;

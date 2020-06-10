@@ -7,10 +7,10 @@
 #include "mpi_ops.h"
 #include "util.h"
 
-FILE *file = NULL;
 
 int main(int argc, char** argv){
 
+    FILE *file = NULL;
 
 
     if(argc != 3){
@@ -35,18 +35,21 @@ int main(int argc, char** argv){
 		// Coordinator
 		DPRINT("[rank: %d] Coordinator started\n", rank);
 
-        MPI_init();
+        MPI_init(file);
 
     }
     else{
         // Peers
         DPRINT("[rank: %d] Peer started\n", rank);
-        MPI_server();
+        MPI_Peer();
     }
 
 
 
+    int finalize_retcode = MPI_Finalize();
     DPRINT("[rank: %d] Peer Terminated\n", rank);
-
-    MPI_Finalize();
+/*     if (0 == rank)
+        fprintf(stderr, "Process, return_code\n");
+    fprintf(stderr, "%i, %i\n", rank, finalize_retcode); */
+    return 0;
 }

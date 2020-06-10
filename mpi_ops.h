@@ -8,8 +8,7 @@
 #include <mpi.h>
 #include <stddef.h>
 
-
-void MPI_init(void);
-void MPI_server(void);
+void MPI_init(FILE *file);
+void MPI_Peer(void);
 
 #endif /* _MPI_OPS_H_ */
