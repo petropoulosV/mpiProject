@@ -44,9 +44,11 @@ int main(int argc, char** argv){
         MPI_Peer();
     }
 
+    
 
 
-    int finalize_retcode = MPI_Finalize();
+
+    /* int finalize_retcode = */ MPI_Finalize();
     DPRINT("[rank: %d] Peer Terminated\n", rank);
 /*     if (0 == rank)
         fprintf(stderr, "Process, return_code\n");

@@ -18,9 +18,14 @@
 #define DPRINT(...)
 #endif /* DEBUG */
 
+/* error reporting helpers */
+#define ERRX(ret, str) \
+    do { fprintf(stderr, str "\n"); exit(ret); } while (0)
+
+
 #define BUFFER_SIZE 1024
 
-
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 #define ACK 0
 #define ERROR 1
@@ -30,8 +35,9 @@
 #define ELECTION_DONE 5
 #define CANDIDATE_ID 6
 #define LEADER_ELECTION_DONE 7
-
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define CONNECT 8
 
 int rank, world_size, NUM_SERVERS;
+
+
 #endif /* _UTIL_H_ */
