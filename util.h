@@ -36,6 +36,7 @@
 #define CANDIDATE_ID 6
 #define LEADER_ELECTION_DONE 7
 #define CONNECT 8
+#define UPLOAD 9
 
 int rank, world_size, NUM_SERVERS;
 
