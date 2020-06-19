@@ -276,8 +276,8 @@ void MPI_Peer(void)
 
             while (flag_shutdown == 0){
 
+                DPRINT("[Master: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
                 MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-                //DPRINT("[Master: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
 
                 switch (status.MPI_TAG){
 
@@ -407,14 +407,14 @@ void MPI_Peer(void)
                                 local_files[receive_array[1]] = new_file(receive_array[1]);
 
                                 /* If there is long path use it*/
-/*                                 if (long_path){
+                                if (neighbors[0] == Master){
                                     DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Loong Path\n", rank);
                                     MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_ACK, MPI_COMM_WORLD);
                                 }
-                                else{ */
+                                else{ 
                                     DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Left\n", rank);
                                     MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD_ACK, MPI_COMM_WORLD);
-                                //}
+                                }
                             }
                             else{/* There is not this case */
 
@@ -528,7 +528,7 @@ void MPI_Peer(void)
 
                     DPRINT("[Client: %d] received msg of type UPLOAD_FAILED  from Master %d\n", rank, receive);
 
-                    IPRINT("CLIENT %d FAILED TO UPLOADED FILE %d \n", rank, receive);
+                    IPRINT("CLIENT %d FAILED TO UPLOADE FILE %d \n", rank, receive);
 
                     Open_requests--;
                     break;
@@ -645,7 +645,7 @@ void MPI_Master(struct master_struct *m)
         }
     }
 
-    DPRINT("[Master: %d] send msg of type LEADER_ELECTION_DONE to coordinator: %d\n", rank, 0);
+    DPRINT("[Master: %d] send msg of type LEADER_ELECTION_DONE to coordinator \n", rank);
     MPI_Send(m->leader_id, 1, MPI_INT, 0, LEADER_ELECTION_DONE, MPI_COMM_WORLD);
 
 
