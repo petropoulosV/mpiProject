@@ -18,6 +18,14 @@
 #define DPRINT(...)
 #endif /* DEBUG */
 
+#define INFO
+
+#ifdef INFO
+#define IPRINT(...) fprintf(stderr, __VA_ARGS__);
+#else /* INFO */
+#define IPRINT(...)
+#endif /* INFO */
+
 /* error reporting helpers */
 #define ERRX(ret, str) \
     do { fprintf(stderr, str "\n"); exit(ret); } while (0)
@@ -37,6 +45,11 @@
 #define LEADER_ELECTION_DONE 7
 #define CONNECT 8
 #define UPLOAD 9
+#define UPLOAD_FAILED 10
+#define REQUEST_SHUTDOWN 11
+#define SHUTDOWN_OK 12
+#define UPLOAD_ACK 13
+#define UPLOAD_OK 14
 
 int rank, world_size, NUM_SERVERS;
 

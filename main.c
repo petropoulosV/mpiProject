@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "mpi_ops.h"
 #include "util.h"
+#include "mpi_ops.h"
 
 
 int main(int argc, char** argv){
@@ -48,10 +48,9 @@ int main(int argc, char** argv){
 
 
 
-     int finalize_retcode =  MPI_Finalize();
-    DPRINT("[rank: %d] Peer Terminated\n", rank);
-/*     if (0 == rank)
-        fprintf(stderr, "Process, return_code\n");
-    fprintf(stderr, "%i, %i\n", rank, finalize_retcode); */
+    MPI_Finalize();
+
+    IPRINT("[rank: %d] Peer Terminated\n", rank);
+
     return 0;
 }
