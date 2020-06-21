@@ -98,9 +98,11 @@ MPI_init(FILE *file)
             }
 
 
-            //MPI_Send(&i, 1, MPI_INT, n1, LEAVE, MPI_COMM_WORLD);
-            //DPRINT("[Coord: %d] send msg of type LEAVE to Server: %d \n", 0, n1);
+            MPI_Send(&i, 1, MPI_INT, n1, LEAVE, MPI_COMM_WORLD);
+            DPRINT("[Coord: %d] send msg of type LEAVE to Server: %d \n", 0, n1);
 
+            MPI_Recv(&response, 1, MPI_INT, MPI_ANY_SOURCE, LEAVE_ACK, MPI_COMM_WORLD, &status);
+            DPRINT("[Coord: %d] received msg of type LEAVE_ACK from Master\n", rank);
         }
         else if(!strcmp("START_LEADER_ELECTION", event)){
             for (i = 0; i < NUM_SERVERS; i++){
@@ -281,7 +283,7 @@ void MPI_Peer(void)
 
                     Sortest_path = (int *)malloc(sizeof(int) * NUM_SERVERS);
                     if (Sortest_path == NULL)
-                    ERRX(1, "Error malloc\n");
+                        ERRX(1, "Error malloc\n");
                     MPI_Master(&master, Sortest_path);
                     flag_MST = 1;
                     break;
@@ -334,6 +336,12 @@ void MPI_Peer(void)
 
                     case UPDATE_ACK:
                         //RPRINT("@[Master: %d] received msg of type UPDATE_ACK from: %d \n", rank, status.MPI_SOURCE);
+                        MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+
+                    case LEAVE_CONFIRMATION:
+                        //RPRINT("@[Master: %d] received msg of type LEAVE_CONFIRMATION from: %d \n", rank, status.MPI_SOURCE);
                         MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                         break;
@@ -475,7 +483,7 @@ void MPI_Peer(void)
                         break;
 
                     case UPDATE:
-                        IPRINT("[Master: %d] received msg of type UPDATE <%d,%d, %d>\n", rank, status.MPI_SOURCE, receive_array[0], receive_array[1]);
+                        RPRINT("[Master: %d] received msg of type UPDATE <%d,%d, %d>\n", rank, status.MPI_SOURCE, receive_array[0], receive_array[1]);
 
                         if (!Hash_Table[receive] || receive_array[1] == 0){
                             DPRINT("[Master: %d] send msg of type UPDATE_FAILED to Client %d for file %d\n", rank, status.MPI_SOURCE, receive_array[0]);
@@ -567,7 +575,7 @@ void MPI_Peer(void)
 
                         if (status.MPI_SOURCE == 0){
                             DPRINT("[Master: %d] received msg of type _REQUEST_SHUTDOWN from Coordinator\n", rank);
-                            DPRINT("[Master: %d] send msg of type REQUEST_SHUTDOWN to Left \n", rank);
+                            RPRINT("[Master: %d] send msg of type REQUEST_SHUTDOWN to Left (%d) \n", rank, neighbors[0]);
 
                             MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], REQUEST_SHUTDOWN, MPI_COMM_WORLD);
 
@@ -578,6 +586,35 @@ void MPI_Peer(void)
                             MPI_Send(&receive_array[0], 1, MPI_INT, 0, SHUTDOWN_OK, MPI_COMM_WORLD);
                             flag_shutdown++;
                         }
+
+                        break;
+
+
+                    case LEAVE_REQUEST:
+                        DPRINT("[Master: %d] received msg of type LEAVE_REQUEST \n", rank);
+
+                        NUM_SERVERS--;
+                        N = ((NUM_SERVERS - 1) / 2) + 1;
+
+                        ServersId = remove_server(ServersId, status.MPI_SOURCE, Sortest_path);
+
+                        receive_array[0] = status.MPI_SOURCE;
+                        MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], LEAVE_CONFIRMATION, MPI_COMM_WORLD);
+                        RPRINT("[Master: %d] send msg of type LEAVE_CONFIRMATION (%d) to Left \n", rank, receive_array[0]);
+
+                        break;
+
+                    case LEAVE_CONFIRMATION:
+                        DPRINT("[Server: %d] received msg of type LEAVE_CONFIRMATION <%d>\n", rank, receive_array[0]);
+
+                        if (neighbors[1] == receive_array[0]){
+                            neighbors[1] = ServersId[0];
+                        }
+
+                        MPI_Send(&receive_array[0], 1, MPI_INT, 0, LEAVE_ACK, MPI_COMM_WORLD);
+                        DPRINT("[Master: %d] send msg of type LEAVE_ACK to Coordinator \n", rank);
+
+                        IPRINT("%d HAS LEFT THE SYSTEM \n", receive_array[0]);
 
                         break;
 
@@ -597,7 +634,7 @@ void MPI_Peer(void)
                         request_type = registration_type(queue);
                         registration_decrease(queue);
 
-                        IPRINT("@@@@@@@@@@@@@@@ THERE is a REQUEST %d for file %d by client %d \n", request_type, queue->key, queue->front->reg->id);
+                        RPRINT("@@@@@@@@@@@@@@@ THERE is a REQUEST %d for file %d by client %d \n", request_type, queue->key, queue->front->reg->id);
                         switch (request_type){
                             case RETRIEVE:
 
@@ -661,14 +698,14 @@ void MPI_Peer(void)
                             default:
                                 break;
 
-                        }/* switch */
+                        }/* switch */  /* NOT HERE ABOVE */
                     }
                 }
 
 
             } /* while */
 
-            printf("[Master: %d] End of Service\n", rank);
+            RPRINT("[Master: %d] End of Service\n", rank);
         } /* if SERVER)*/
 
         /*******************************************************  JUST SERVER    *************************************************************** */
@@ -684,7 +721,7 @@ void MPI_Peer(void)
 
                     case UPLOAD:
 
-                        IPRINT("[Server: %d] received msg of type UPLOAD <%d,%d> from %d\n", rank, receive_array[0], receive_array[1], status.MPI_SOURCE);
+                        DPRINT("[Server: %d] received msg of type UPLOAD <%d,%d> from %d\n", rank, receive_array[0], receive_array[1], status.MPI_SOURCE);
 
                         if (receive_array[0] == rank){
 
@@ -888,7 +925,7 @@ void MPI_Peer(void)
                     case REQUEST_SHUTDOWN:
 
                         DPRINT("[Server: %d] received msg of type REQUEST_SHUTDOWN \n", rank);
-                        DPRINT("[Server: %d] send msg of type REQUEST_SHUTDOWN to Left \n", rank);
+                        RPRINT("[Server: %d] send msg of type REQUEST_SHUTDOWN to Left (%d) \n", rank, neighbors[0]);
 
                         if(neighbors[0] == Master)
                             MPI_Send(&receive_array[0], 1, MPI_INT, Master, REQUEST_SHUTDOWN, MPI_COMM_WORLD);
@@ -896,6 +933,76 @@ void MPI_Peer(void)
                             MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], REQUEST_SHUTDOWN, MPI_COMM_WORLD);
 
                         flag_shutdown++;
+
+                        break;
+
+                    case LEAVE:
+                        DPRINT("[Server: %d] received msg of type LEAVE \n", rank);
+
+                        if(long_path){
+                            MPI_Send(&receive, 1, MPI_INT, Master, LEAVE_REQUEST, MPI_COMM_WORLD);
+                            DPRINT("[Server: %d] send msg of type LEAVE_REQUEST to Master \n", rank);
+                        }
+                        else{
+                            MPI_Send(&receive, 1, MPI_INT, Master, LEAVE_REQUEST, MPI_COMM_WORLD);
+                            DPRINT("[Server: %d] send msg of type LEAVE_REQUEST to Master \n", rank);
+                        }
+
+                        break;
+
+                    case LEAVE_CONFIRMATION:
+                        DPRINT("[Server: %d] received msg of type LEAVE_CONFIRMATION <%d>\n", rank, receive_array[0]);
+
+                        if(rank != receive_array[0]){
+                            i = neighbors[0];
+                            if(neighbors[0] == receive_array[0]){
+                                neighbors[0] = ServersId[NUM_SERVERS - 3];
+                                i = receive_array[0];
+                                RPRINT("[Server: %d] NEW LEFT NEIGHTBOR %d \n", rank, neighbors[0]);
+                            }else if(neighbors[1] == receive_array[1]){
+                                neighbors[1] = ServersId[0];
+                                RPRINT("[Server: %d] NEW RIGTH NEIGHTBOR %d\n", rank, neighbors[1]);
+                            }
+
+
+                            NUM_SERVERS--;
+                            N = ((NUM_SERVERS - 1) / 2) + 1;
+
+
+                            ServersId = remove_server(ServersId, receive_array[0], NULL);
+
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, i, LEAVE_CONFIRMATION, MPI_COMM_WORLD);
+                            RPRINT("[Server: %d] send msg of type LEAVE_CONFIRMATION (%d) to Left \n", rank, receive_array[0]);
+                        }
+                        else{
+                            for (i = 0; i < LOCAL_NUM; i++){
+                                if(local_files[i]){
+                                    receive_array[0] = local_files[i]->id;
+                                    receive_array[1] = local_files[i]->version;
+
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], TRANSFER, MPI_COMM_WORLD);
+                                    DPRINT("[Server: %d] send msg of type TRANSFER to Left \n", rank);
+                                }
+                            }
+
+                            receive_array[0] = rank;
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], LEAVE_CONFIRMATION, MPI_COMM_WORLD);
+                            RPRINT("[Server: %d] send msg of type LEAVE_CONFIRMATION (%d) to Left ##\n", rank, receive_array[0]);
+                            flag_shutdown = 1;
+                        }
+
+                        break;
+
+                    case TRANSFER:
+                        DPRINT("[Server: %d] received msg of type TRANSFER <%d,%d>\n", rank, receive_array[0], receive_array[1]);
+
+                        if(local_files[receive_array[0]]){
+                            if(local_files[receive_array[0]]->version <  receive_array[1]){
+                                local_files[receive_array[0]]->version =  receive_array[1];
+                            }
+                        }else{
+                            local_files[receive_array[0]] = new_file(receive_array[0], receive_array[1]);
+                        }
 
                         break;
 
@@ -907,7 +1014,7 @@ void MPI_Peer(void)
 
             } /* WHILE */
 
-            printf("[Server: %d] End of Service\n", rank);
+            RPRINT("[Server: %d] End of Service\n", rank);
         }/* if (MASTER)*/
 
     /* ********************************************************************************************************************************* */
@@ -1076,7 +1183,7 @@ void MPI_Peer(void)
 
             if(flag_barrier && Open_requests == 0){
                 flag_barrier = 0;
-                DPRINT("[Client: %d] send msg of type BARRIER_ACK  \n", rank);
+                RPRINT("[Client: %d] send msg of type BARRIER_ACK  \n", rank);
                 MPI_Send(&receive, 1, MPI_INT, 0, BARRIER_ACK, MPI_COMM_WORLD);
             }
 
@@ -1096,8 +1203,7 @@ void MPI_Peer(void)
             }
         }
 
-
-        printf("[Client: %d] End of Service\n", rank);
+        RPRINT("[Client: %d] End of Service\n", rank);
 
     } /*else if(CLIENT)*/
 
@@ -1161,7 +1267,7 @@ void MPI_Master(struct master_struct *m, int *n)
         MPI_Send(m->leader_id, 1, MPI_INT, long_paths[i], CONNECT, MPI_COMM_WORLD);
 
         MPI_Recv(&response, 1, MPI_INT, long_paths[i], ACK, MPI_COMM_WORLD, &status);
-        IPRINT("[Master: %d] %d  CONNECTED TO %d \n", rank, long_paths[i], rank);
+        IPRINT("%d  CONNECTED TO %d \n", long_paths[i], rank);
     }
 
     IPRINT("SORTEST PATH : ");
@@ -1213,3 +1319,27 @@ void sortest_paths(int *connections, int *sortest_path_, int *neighbors, int l)
     sortest_path_[NUM_SERVERS-1] = 0;
 }
 
+int *remove_server(int *Servers_old, int remove, int *n){
+    int *Servers_new;
+    int i, k = 0;
+    int NUM_SERVERS_OLD = NUM_SERVERS + 1 ;
+
+    Servers_new = (int *)malloc(sizeof(int) * NUM_SERVERS);
+    if (Servers_new == NULL)
+        ERRX(1, "Error malloc\n");
+
+    for (i = 0; i < NUM_SERVERS_OLD; i++){
+
+        if(Servers_old[i] != remove){
+            Servers_new[k++] = Servers_old[i];
+        }
+
+        if(n)
+            n[i] = 0;
+
+    }
+
+    free(Servers_old);
+
+    return Servers_new;
+}

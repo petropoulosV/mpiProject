@@ -23,5 +23,6 @@ void MPI_Master(struct master_struct *m, int *n);
 void MPI_Simple_Server(struct master_struct *m);
 
 void sortest_paths(int *connections, int *sortest_pats, int *neighbors, int l);
+int *remove_server(int *Servers_old, int remove, int *n);
 
 #endif /* _MPI_OPS_H_ */
