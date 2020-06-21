@@ -19,7 +19,9 @@ struct master_struct{
 void MPI_init(FILE *file);
 void MPI_Peer(void);
 
-void MPI_Master(struct master_struct *m);
+void MPI_Master(struct master_struct *m, int *n);
 void MPI_Simple_Server(struct master_struct *m);
+
+void sortest_paths(int *connections, int *sortest_pats, int *neighbors, int l);
 
 #endif /* _MPI_OPS_H_ */

@@ -11,12 +11,13 @@
 
 //struct Queue **Hash_Table;
 
+
 void
 MPI_init(FILE *file)
 {
     int n1, n2, n3;
     char buff[BUFFER_SIZE], event[100];
-    int neighbors[2], response;
+    int neighbors[3], response;
     int *Servers, *Clients, Clients_Number = 0, s = 0, i, Master, master = -1;
     int Clients_Shutdown = 0;
 
@@ -36,7 +37,7 @@ MPI_init(FILE *file)
     Clients[0] = 0;
 
     MPI_Datatype MPI_ARRAY;
-    MPI_Type_contiguous(2, MPI_INT, &MPI_ARRAY);
+    MPI_Type_contiguous(3, MPI_INT, &MPI_ARRAY);
     MPI_Type_commit(&MPI_ARRAY);
 
 
@@ -46,7 +47,7 @@ MPI_init(FILE *file)
         sscanf(buff, "%s %d %d %d", event, &n1, &n2, &n3);
 
         if(!strcmp("SERVER",event)){
-            
+
             Servers[s++] = n1;
             Clients[n1] = 0;
 
@@ -57,8 +58,8 @@ MPI_init(FILE *file)
             MPI_Send(&neighbors, 1, MPI_ARRAY, n1, SERVER, MPI_COMM_WORLD);
             DPRINT("[Coord: %d] send msg of type SERVER to server: %d left: %d, right %d \n", 0, n1, neighbors[0], neighbors[1]);
 
-            MPI_Recv(&response, 1, MPI_INT, n1, ACK, MPI_COMM_WORLD, &status);
-            DPRINT("[Coord: %d] received msg of type SERVER with tag %d, from server: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
+            MPI_Recv(&response, 1, MPI_INT, MPI_ANY_SOURCE, ACK, MPI_COMM_WORLD, &status);
+            DPRINT("[Coord: %d] received msg of type ACK (SERVER) from server: %d \n", rank, status.MPI_SOURCE);
 
         }
         else if(!strcmp("UPLOAD", event)){
@@ -67,16 +68,41 @@ MPI_init(FILE *file)
             DPRINT("[Coord: %d] send msg of type UPLOAD <%d> to client: %d\n", 0, n2, n1);
             MPI_Send(&n2, 1, MPI_INT, n1, UPLOAD, MPI_COMM_WORLD);
 
+        }
+        else if(!strcmp("RETRIEVE", event)){
+
+            DPRINT("[Coord: %d] send msg of type RETRIEVE <%d> to client: %d\n", 0, n2, n1);
+            MPI_Send(&n2, 1, MPI_INT, n1, RETRIEVE, MPI_COMM_WORLD);
+        }
+        else if(!strcmp("UPDATE", event)){
+
+            DPRINT("[Coord: %d] send msg of type UPDATE <%d> to client: %d\n", 0, n2, n1);
+            MPI_Send(&n2, 1, MPI_INT, n1, UPDATE, MPI_COMM_WORLD);
+        }
+        else if (!strcmp("LEAVE", event)){
+            Clients_Shutdown = Clients_Number;
+
+            for (i = 0; i < world_size; i++){
+
+                if (Clients[i]){
+                    MPI_Send(&i, 1, MPI_INT, i, BARRIER, MPI_COMM_WORLD);
+                    DPRINT("[Coord: %d] send msg of type BARRIER to Client: %d \n", 0, i);
+                }
+            }
+
+            while (Clients_Shutdown){
+                Clients_Shutdown--;
+
+                MPI_Recv(&response, 1, MPI_INT, MPI_ANY_SOURCE, BARRIER_ACK, MPI_COMM_WORLD, &status);
+                DPRINT("[Coord: %d] received msg of type BARRIER_ACK from Client: %d \n", rank, status.MPI_SOURCE);
+            }
+
+
+            //MPI_Send(&i, 1, MPI_INT, n1, LEAVE, MPI_COMM_WORLD);
+            //DPRINT("[Coord: %d] send msg of type LEAVE to Server: %d \n", 0, n1);
 
         }
-        else if(!strcmp("RETRIEVE", event))
-        {
-        }
-        else if(!strcmp("UPDATE", event))
-        {
-        }
-        else if(!strcmp("START_LEADER_ELECTION", event))
-        {   
+        else if(!strcmp("START_LEADER_ELECTION", event)){
             for (i = 0; i < NUM_SERVERS; i++){
                 DPRINT("[Coord: %d] send msg of type START_LEADER_ELECTION to server: %d\n", 0, Servers[i]);
                 response = 0;
@@ -132,30 +158,37 @@ MPI_init(FILE *file)
     DPRINT("[Coord: %d] received msg of type SHUTDOWN_OK from Master: %d \n", rank, status.MPI_SOURCE);
 }
 
-
+int N;
+int *ServersId, *Sortest_path;
 void MPI_Peer(void)
 {
 
-    int neighbors[2], receive;
+    int neighbors[3], receive;
     int leader_id = rank;
-    int *ServersId, s = 0, i, j;
+    int s = 0, i, j;
+    //int *ServersId, *Sortest_path;
     int sendCandidate = 0;
     int long_path = 0;
     int flag_LED = 0, flag_LES = 0, flag_MST = 0, flag = 0;
     int Master;
-    int N, tmp;
+    int tmp;
     int *upload_servers;
     int Open_requests = 0;
     int flag_shutdown = 0;
-    int receive_array[2];
+    int flag_barrier = 0;
+    int receive_array[3];
     int Client_id, file_id;
-    struct master_struct master;
-    struct file *local_files[1000] = {NULL};
-    struct Queue *queue;
+    int request_type;
+    int file_version;
 
-        MPI_Status status;
+    struct master_struct master;
+    struct file *local_files[LOCAL_NUM] = {NULL};
+    struct Queue *queue;
+    struct registration *reg_;
+
+    MPI_Status status;
     MPI_Datatype MPI_ARRAY;
-    MPI_Type_contiguous(2, MPI_INT, &MPI_ARRAY);
+    MPI_Type_contiguous(3, MPI_INT, &MPI_ARRAY);
     MPI_Type_commit(&MPI_ARRAY);
 
     srand(time(0));
@@ -166,7 +199,6 @@ void MPI_Peer(void)
 
 
     N = ( (NUM_SERVERS - 1) / 2) + 1;
-
 
     MPI_Recv(neighbors, 1, MPI_ARRAY, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
@@ -187,7 +219,6 @@ void MPI_Peer(void)
 
 
             MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            //DPRINT("[server: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
 
             switch (status.MPI_TAG){
 
@@ -234,12 +265,12 @@ void MPI_Peer(void)
 
                     flag_LED++;
                     break;
-    
+
                 default:
                     break;
 
             }/* switch */
-            
+
             if(s == NUM_SERVERS && flag_LES != 0){
                 master.rank = &rank;
                 master.neighbors = neighbors;
@@ -247,7 +278,11 @@ void MPI_Peer(void)
                 master.leader_id = &leader_id;
 
                 if (leader_id == rank){
-                    MPI_Master(&master);
+
+                    Sortest_path = (int *)malloc(sizeof(int) * NUM_SERVERS);
+                    if (Sortest_path == NULL)
+                    ERRX(1, "Error malloc\n");
+                    MPI_Master(&master, Sortest_path);
                     flag_MST = 1;
                     break;
                 }
@@ -256,7 +291,7 @@ void MPI_Peer(void)
                     break;
                 }
             }
-        }
+        }/* WHILE */
 
         Master = leader_id;
 
@@ -270,14 +305,51 @@ void MPI_Peer(void)
         /* ******************************************************   MASTER    *************************************************************** */
         if (flag_MST){
 
-            struct Queue *Hash_Table[1000] = {NULL};
-            
+            struct Queue *Hash_Table[LOCAL_NUM] = {NULL};
+
             upload_servers = (int *)malloc(sizeof(int) * N);
 
             while (flag_shutdown == 0){
 
-                DPRINT("[Master: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
-                MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+                MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                switch (status.MPI_TAG){
+
+                    case RETRIEVE_ACK:
+                        //RPRINT("@[Master: %d] received msg of type RETRIEVE_ACK from: %d \n", rank, status.MPI_SOURCE);
+                        MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+                    case UPDATE:
+                        //RPRINT("@[Master: %d] received msg of type UPDATE from: %d \n", rank, status.MPI_SOURCE);
+                        MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+
+                    case VERSION_CHECK:
+                        //RPRINT("@[Master: %d] received msg of type VERSION_CHECK from: %d \n", rank, status.MPI_SOURCE);
+                        MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+
+                    case UPDATE_ACK:
+                        //RPRINT("@[Master: %d] received msg of type UPDATE_ACK from: %d \n", rank, status.MPI_SOURCE);
+                        MPI_Recv(&receive_array, 1, MPI_ARRAY, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+
+                    default:
+                        //RPRINT("@[Master: %d] received msg of type default (%d) from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
+                        MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+                        break;
+
+                } /* switch */
+
+
+
+                //DPRINT("[Master: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
+                //MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
                 switch (status.MPI_TAG){
 
@@ -285,7 +357,7 @@ void MPI_Peer(void)
                         DPRINT("[Master: %d] received msg of type UPLOAD <%d> from Client %d\n", rank, receive, status.MPI_SOURCE);
 
                         if(!Hash_Table[receive]){
-                            
+
                             Hash_Table[receive] = MakeEmptyQueue(receive);
                             Enqueue(status.MPI_SOURCE, N, UPLOAD, 1, Hash_Table[receive]);
 
@@ -304,7 +376,8 @@ void MPI_Peer(void)
                                 }
 
                                 for (j = 0; j < i; j++){
-                                    if (upload_servers[j] == ServersId[tmp]){
+                                    if (upload_servers[j] == tmp){
+                                        //if (upload_servers[j] == ServersId[tmp]){
                                         flag++;
                                         break;
                                     }
@@ -315,16 +388,25 @@ void MPI_Peer(void)
                                     continue;
                                 }
 
-                                upload_servers[i] = ServersId[tmp];
+                                //upload_servers[i] = ServersId[tmp];
+                                upload_servers[i] = tmp;
                             }
 
-                            IPRINT("[Master: %d] send msg of type UPLOAD <%d,(", rank, receive_array[1]);
+                            DPRINT("[Master: %d] send msg of type UPLOAD <%d,(\n", rank, receive_array[1]);
                             for (i = 0; i < N; i++){
-                                receive_array[0] = upload_servers[i];
-                                IPRINT("%d, \n", receive_array[0]);
-                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD, MPI_COMM_WORLD);
+                                //receive_array[0] = upload_servers[i];
+                                receive_array[0] = ServersId[upload_servers[i]];
+                                if (Sortest_path[upload_servers[i]]){
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, Sortest_path[upload_servers[i]], UPLOAD, MPI_COMM_WORLD);
+                                    DPRINT("%d(%d), \n", Sortest_path[upload_servers[i]], receive_array[0]);
+                                }
+                                else{
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD, MPI_COMM_WORLD);
+                                    DPRINT("%d, \n", receive_array[0]);
+                                }
+
                             }
-                            IPRINT(")to Left\n");
+                            DPRINT(")to Left\n");
                         }
                         else{
 
@@ -334,14 +416,10 @@ void MPI_Peer(void)
 
                         break;
 
-                    case UPLOAD_FAILED:
 
-                        DPRINT("[Master: %d] received msg of type UPLOAD_FAILED <%d> from %d\n", rank, receive, status.MPI_SOURCE);
-
-                        break;
 
                     case UPLOAD_ACK:
-                        DPRINT("[Server: %d] received msg of type UPLOAD_ACK <%d>\n", rank, receive);
+                        DPRINT("[Master: %d] received msg of type UPLOAD_ACK <%d>\n", rank, receive);
 
                         file_id = receive;
 
@@ -350,10 +428,138 @@ void MPI_Peer(void)
 
                         if(!registration_decrease(queue)){
 
-                            DPRINT("[Server: %d] send msg of type UPLOAD_OK to Client %d for file %d \n", rank, Client_id, file_id);
+                            DPRINT("[Master: %d] send msg of type UPLOAD_OK to Client %d for file %d \n", rank, Client_id, file_id);
                             MPI_Send(&file_id, 1, MPI_INT, Client_id, UPLOAD_OK, MPI_COMM_WORLD);
                         }
 
+
+                        break;
+
+                    case UPLOAD_FAILED:
+
+                        DPRINT("[Master: %d] received msg of type UPLOAD_FAILED <%d> from %d\n", rank, receive, status.MPI_SOURCE);
+
+                        break;
+
+                    case RETRIEVE:
+                        DPRINT("[Master: %d] received msg of type RETRIEVE <%d,%d>\n", rank, status.MPI_SOURCE, receive);
+
+                        if (!Hash_Table[receive]){
+                            DPRINT("[Master: %d] send msg of type RETRIEVE_FAILED to Client %d \n", rank, status.MPI_SOURCE);
+                            receive = -1;
+                            MPI_Send(&receive, 1, MPI_INT, status.MPI_SOURCE, RETRIEVE_OK, MPI_COMM_WORLD);
+                        }
+                        else{
+
+                            Enqueue(status.MPI_SOURCE, (N + 1), RETRIEVE, 0, Hash_Table[receive]);
+                        }
+
+                        break;
+
+
+
+                    case RETRIEVE_ACK:
+                        DPRINT("[Master: %d] received msg of type RETRIEVE_ACK file %d version %d from %d \n", rank, receive_array[0], receive_array[1], status.MPI_SOURCE);
+                        file_id = receive_array[0];
+
+                        queue = Hash_Table[file_id];
+                        file_version = registration_retrieve_update(queue, receive_array[1]);
+                        Client_id = client_id(queue);
+
+                        if (!registration_decrease(queue)){
+
+                            DPRINT("[Master: %d] send msg of type RETRIEVE_OK to Client %d for file %d  with version %d\n", rank, Client_id, file_id, file_version);
+                            MPI_Send(&file_version, 1, MPI_INT, Client_id, RETRIEVE_OK, MPI_COMM_WORLD);
+                        }
+
+                        break;
+
+                    case UPDATE:
+                        IPRINT("[Master: %d] received msg of type UPDATE <%d,%d, %d>\n", rank, status.MPI_SOURCE, receive_array[0], receive_array[1]);
+
+                        if (!Hash_Table[receive] || receive_array[1] == 0){
+                            DPRINT("[Master: %d] send msg of type UPDATE_FAILED to Client %d for file %d\n", rank, status.MPI_SOURCE, receive_array[0]);
+                            MPI_Send(&receive_array[0], 1, MPI_INT, status.MPI_SOURCE, UPDATE_FAILED, MPI_COMM_WORLD);
+                        }else{
+                            Enqueue(status.MPI_SOURCE, (N + 1), UPDATE, receive_array[1], Hash_Table[receive_array[0]]);
+                        }
+
+                        break;
+                    case VERSION_CHECK:
+                        DPRINT("[Master: %d] received msg of type VERSION_CHECK for file %d with version %d and flag %d\n", rank, receive_array[0], receive_array[1], receive_array[2]);
+
+                        file_id = receive_array[0];
+
+                        queue = Hash_Table[file_id];
+                        file_version = registration_retrieve_update(queue, 0);
+                        Client_id = client_id(queue);
+
+                        if(receive_array[2] == 0){
+                            DPRINT("[Master: %d] send msg of type VERSION_OUTDATED to Client %d for file %d \n", rank, Client_id, file_id);
+                            MPI_Send(&file_id, 1, MPI_INT, Client_id, VERSION_OUTDATED, MPI_COMM_WORLD);
+                            while(registration_decrease(queue)); /* remove registration from queue */
+                        }else{
+
+
+                            /* SELECT UPLOAD SERVERS */
+                            for (i = 0; i < N; i++){
+
+                                tmp = (rand() % NUM_SERVERS);
+                                upload_servers[i] = -1;
+                                flag = 0;
+
+                                if (rank == ServersId[tmp]){
+                                    i--;
+                                    continue;
+                                }
+
+                                for (j = 0; j < i; j++){
+                                    if (upload_servers[j] == tmp){
+                                    //if (ServersId[upload_servers[j]] == ServersId[tmp]){
+                                        flag++;
+                                        break;
+                                    }
+                                }
+
+                                if (flag != 0){
+                                    i--;
+                                    continue;
+                                }
+
+                                //upload_servers[i] = ServersId[tmp];
+                                upload_servers[i] = tmp;
+
+                            }
+
+                            //DPRINT("[Master: %d] send msg of type UPDATE <%d,(", rank, receive_array[1]);
+                            receive_array[2] = file_version;
+                            receive_array[1] = file_id;
+                            for (i = 0; i < N; i++){
+                                //receive_array[0] = upload_servers[i];
+                                receive_array[0] = ServersId[upload_servers[i]];
+                                if (Sortest_path[upload_servers[i]])
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, Sortest_path[upload_servers[i]], UPDATE, MPI_COMM_WORLD);
+                                else
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPDATE, MPI_COMM_WORLD);
+                                //DPRINT("%d, \n", receive_array[0]);
+                            }
+                            //DPRINT(")to Left\n");
+                        }
+
+                        break;
+
+                    case UPDATE_ACK:
+                        DPRINT("[Master: %d] received msg of type UPDATE_ACK file %d from %d \n", rank, receive_array[1], status.MPI_SOURCE);
+                        file_id = receive_array[1];
+
+                        queue = Hash_Table[file_id];
+                        Client_id = client_id(queue);
+
+                        if (!registration_decrease(queue)){
+
+                            DPRINT("[Master: %d] send msg of type UPDATE_OK to Client %d for file %d  \n", rank, Client_id, file_id);
+                            MPI_Send(&file_id, 1, MPI_INT, Client_id, UPDATE_OK, MPI_COMM_WORLD);
+                        }
 
                         break;
 
@@ -372,12 +578,93 @@ void MPI_Peer(void)
                             MPI_Send(&receive_array[0], 1, MPI_INT, 0, SHUTDOWN_OK, MPI_COMM_WORLD);
                             flag_shutdown++;
                         }
-                        
+
                         break;
 
                     default:
                         break;
                 }/* switch */
+
+
+
+                /* Check if there are open requestst */
+                for (i = 0; i < LOCAL_NUM ; i++){
+
+                    queue = Hash_Table[i];
+
+                    if(queue && registration_counter(queue) == (N + 1) ){
+                        Client_id = client_id(queue);
+                        request_type = registration_type(queue);
+                        registration_decrease(queue);
+
+                        IPRINT("@@@@@@@@@@@@@@@ THERE is a REQUEST %d for file %d by client %d \n", request_type, queue->key, queue->front->reg->id);
+                        switch (request_type){
+                            case RETRIEVE:
+
+
+                                /* SELECT UPLOAD SERVERS */
+                                for (i = 0; i < N; i++){
+
+                                    tmp = (rand() % NUM_SERVERS);
+                                    upload_servers[i] = -1;
+                                    flag = 0;
+
+                                    if (rank == ServersId[tmp]){
+                                        i--;
+                                        continue;
+                                    }
+
+                                    for (j = 0; j < i; j++){
+                                        if (upload_servers[j] == tmp){
+                                        //if (ServersId[upload_servers[j]] == ServersId[tmp]){
+                                            flag++;
+                                            break;
+                                        }
+                                    }
+
+                                    if (flag != 0){
+                                        i--;
+                                        continue;
+                                    }
+
+                                    //upload_servers[i] = ServersId[tmp];
+                                    upload_servers[i] = tmp;
+                                }
+
+                                DPRINT("[Master: %d] send msg of type RETRIEVE <%d,(", rank, receive_array[1]);
+                                receive_array[1] = file_id_take(queue);
+                                for (i = 0; i < N; i++){
+                                    //receive_array[0] = upload_servers[i];
+                                    receive_array[0] = ServersId[upload_servers[i]];
+                                    if (Sortest_path[upload_servers[i]])
+                                        MPI_Send(&receive_array, 1, MPI_ARRAY, Sortest_path[upload_servers[i]], RETRIEVE, MPI_COMM_WORLD);
+                                    else
+                                        MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], RETRIEVE, MPI_COMM_WORLD);
+
+                                    DPRINT("%d, \n", receive_array[0]);
+                                }
+                                DPRINT(")to Left\n");
+
+                                break;
+
+                            case UPDATE:
+
+                                reg_ = first_registration(queue);
+                                receive_array[0] = file_id_take(queue);
+                                receive_array[1] = reg_->version;
+                                receive_array[2] = 1;
+
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], VERSION_CHECK, MPI_COMM_WORLD);
+
+                                break;
+
+                            default:
+                                break;
+
+                        }/* switch */
+                    }
+                }
+
 
             } /* while */
 
@@ -397,28 +684,32 @@ void MPI_Peer(void)
 
                     case UPLOAD:
 
-                        DPRINT("[Server: %d] received msg of type UPLOAD <%d,%d>\n", rank, receive_array[0], receive_array[1]);
+                        IPRINT("[Server: %d] received msg of type UPLOAD <%d,%d> from %d\n", rank, receive_array[0], receive_array[1], status.MPI_SOURCE);
 
                         if (receive_array[0] == rank){
 
                             /* If I dont have the file add it */
                             if (!local_files[receive_array[1]]){
 
-                                local_files[receive_array[1]] = new_file(receive_array[1]);
+                                local_files[receive_array[1]] = new_file(receive_array[1], 1);
 
                                 /* If there is long path use it*/
-                                if (neighbors[0] == Master){
+                                if (long_path){
                                     DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Loong Path\n", rank);
                                     MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_ACK, MPI_COMM_WORLD);
                                 }
-                                else{ 
-                                    DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Left\n", rank);
+                                else if (neighbors[0] == Master){
+                                   // \\DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Left\n", rank);
+                                    MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_ACK, MPI_COMM_WORLD);
+                                }
+                                else{
+                                   // \\DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Left\n", rank);
                                     MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD_ACK, MPI_COMM_WORLD);
                                 }
                             }
                             else{/* There is not this case */
 
-                                DPRINT("[Server: %d] send msg of type _UPLOAD_FAILED_ <%d> to Master via Left\n", rank, receive_array[1]);
+                               // \\DPRINT("[Server: %d] send msg of type _UPLOAD_FAILED_ <%d> to Master via Left\n", rank, receive_array[1]);
                                 MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_FAILED, MPI_COMM_WORLD);
 
                             }
@@ -426,11 +717,12 @@ void MPI_Peer(void)
                         }
                         else{
 
-                            DPRINT("[Server: %d] send msg of type UPLOAD <%d,%d> to Left \n", rank, receive_array[0], receive_array[1]);
+                           // \\DPRINT("[Server: %d] send msg of type UPLOAD <%d,%d> to Left \n", rank, receive_array[0], receive_array[1]);
                             //MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD, MPI_COMM_WORLD);
 
                             if (neighbors[0] == Master)
-                                MPI_Send(&receive_array[1], 1, MPI_INT, neighbors[0], UPLOAD, MPI_COMM_WORLD);
+                                IPRINT("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&#\n")
+                                //MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD, MPI_COMM_WORLD);
                             else
                                 MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD, MPI_COMM_WORLD);
                         }
@@ -440,18 +732,155 @@ void MPI_Peer(void)
                     case UPLOAD_ACK:
                         DPRINT("[Server: %d] received msg of type UPLOAD_ACK <%d,%d>\n", rank, receive_array[0], receive_array[1]);
 
-                        
                         if (long_path){
                             DPRINT("[Server: %d] send msg of type UPLOAD_ACK to master via Loong Path\n", rank);
                             MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_ACK, MPI_COMM_WORLD);
                         }
                         else if (neighbors[0] == Master){
-                            DPRINT("[Server: %d] send msg of type UPLOAD_ACK to Left \n", rank);
-                            MPI_Send(&receive_array[1], 1, MPI_INT, neighbors[0], UPLOAD_ACK, MPI_COMM_WORLD);
+                            // \\DPRINT("[Server: %d] send msg of type UPLOAD_ACK to Left \n", rank);
+                            MPI_Send(&receive_array[1], 1, MPI_INT, Master, UPLOAD_ACK, MPI_COMM_WORLD);
                         }
                         else{
-                            DPRINT("[Server: %d] send msg of type UPLOAD_ACK to Left \n", rank);
+                            // \\DPRINT("[Server: %d] send msg of type UPLOAD_ACK to Left \n", rank);
                             MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPLOAD_ACK, MPI_COMM_WORLD);
+                        }
+
+                        break;
+
+                    case RETRIEVE:
+
+                        DPRINT("[Server: %d] received msg of type RETRIEVE <%d,%d>\n", rank, receive_array[0], receive_array[1]);
+
+                        if (receive_array[0] == rank){
+
+                            file_version = 0;
+
+                            if (local_files[receive_array[1]]){/* If I  have the file */
+                                file_version = local_files[receive_array[1]]->version;
+                            }
+
+                            receive_array[0] = receive_array[1];
+                            receive_array[1] = file_version;
+
+                            /* If there is long path use it*/
+                            if (long_path){
+                                DPRINT("[Server: %d] send msg of type RETRIEVE_ACK to master via Loong Path\n", rank);
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, Master, RETRIEVE_ACK, MPI_COMM_WORLD);
+                            }
+                            else{
+                                DPRINT("[Server: %d] send msg of type RETRIEVE_ACK to master via Left\n", rank);
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], RETRIEVE_ACK, MPI_COMM_WORLD);
+                            }
+
+                        }
+                        else{
+
+                           // \\DPRINT("[Server: %d] send msg of type RETRIEVE <%d,%d> to Left \n", rank, receive_array[0], receive_array[1]);
+
+                            if (neighbors[0] == Master)
+                                IPRINT("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&2\n")
+                                //MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], RETRIEVE, MPI_COMM_WORLD); /* tototototootot */
+                            else
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], RETRIEVE, MPI_COMM_WORLD);
+                        }
+
+                        break;
+
+
+
+                    case RETRIEVE_ACK:
+                        DPRINT("[Server: %d] received msg of type RETRIEVE_ACK <%d,%d>\n", rank, receive_array[0], receive_array[1]);
+
+                            /* If there is long path use it*/
+                        if (long_path){
+                            DPRINT("[Server: %d] send msg of type RETRIEVE_ACK to master via Loong Path\n", rank);
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, Master, RETRIEVE_ACK, MPI_COMM_WORLD);
+                        }
+                        else{
+                           // \\DPRINT("[Server: %d] send msg of type RETRIEVE_ACK to master via Left\n", rank);
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], RETRIEVE_ACK, MPI_COMM_WORLD);
+                        }
+
+                        break;
+
+                    case UPDATE:
+                        DPRINT("[Server: %d] received msg of type UPDATE for file %d with version %d \n", rank, receive_array[1], receive_array[2]);
+
+                        if (receive_array[0] == rank){
+                            file_id = receive_array[1];
+                            if(local_files[file_id]){
+                                if (local_files[file_id]->version <= receive_array[2]){
+                                    local_files[file_id]->version = receive_array[2] + 1;
+                                }
+                            }else{
+                                local_files[file_id] = new_file(file_id, (receive_array[2] + 1));
+                            }
+
+                            if (long_path){
+                                DPRINT("[Server: %d] send msg of type UPDATE_ACK to master via Loong Path\n", rank);
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, Master, UPDATE_ACK, MPI_COMM_WORLD);
+                            }
+                            else{
+                                // \\DPRINT("[Server: %d] send msg of type UPDATE_ACK to master via Left\n", rank);
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPDATE_ACK, MPI_COMM_WORLD);
+                            }
+
+
+                        }
+                        else{
+
+                           // \\DPRINT("[Server: %d] send msg of type RETRIEVE <%d,%d> to Left \n", rank, receive_array[0], receive_array[1]);
+
+                            if (neighbors[0] == Master)
+                                IPRINT("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&2\n")
+                                //MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPDATE, MPI_COMM_WORLD); /* tototototootot */
+                            else
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPDATE, MPI_COMM_WORLD);
+                        }
+
+
+
+                        break;
+
+                    case VERSION_CHECK:
+                        DPRINT("[Server: %d] received msg of type VERSION_CHECK for file %d with version %d and flag %d\n", rank, receive_array[0], receive_array[1], receive_array[2]);
+
+                        if(receive_array[2] == 1){
+                            if (local_files[receive_array[0]] && local_files[receive_array[0]]->version > receive_array[1]){ /* If I  have the file and version is bigger*/
+                                file_version = local_files[receive_array[0]]->version;
+                                receive_array[2] = 0;
+                                if (long_path){
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, Master, VERSION_CHECK, MPI_COMM_WORLD);
+                                }
+                                else{
+                                    MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], VERSION_CHECK, MPI_COMM_WORLD);
+                                }
+                            }else{
+                                // \\DPRINT("[Server: %d] send msg of type VERSION_CHECK to master via Left\n", rank);
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], VERSION_CHECK, MPI_COMM_WORLD);
+                            }
+                        }else{
+                            if (long_path){
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, Master, VERSION_CHECK, MPI_COMM_WORLD);
+                            }
+                            else{
+                                MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], VERSION_CHECK, MPI_COMM_WORLD);
+                            }
+
+                        }
+
+                        break;
+                    case UPDATE_ACK:
+                        DPRINT("[Server: %d] received msg of type UPDATE_ACK <%d,%d>\n", rank, receive_array[0], receive_array[1]);
+
+                        /* If there is long path use it*/
+                        if (long_path){
+                            DPRINT("[Server: %d] send msg of type UPDATE_ACK to master via Loong Path\n", rank);
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, Master, UPDATE_ACK, MPI_COMM_WORLD);
+                        }
+                        else{
+                            // \\DPRINT("[Server: %d] send msg of type UPDATE_ACK to master via Left\n", rank);
+                            MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], UPDATE_ACK, MPI_COMM_WORLD);
                         }
 
                         break;
@@ -462,7 +891,7 @@ void MPI_Peer(void)
                         DPRINT("[Server: %d] send msg of type REQUEST_SHUTDOWN to Left \n", rank);
 
                         if(neighbors[0] == Master)
-                            MPI_Send(&receive_array, 1, MPI_INT, neighbors[0], REQUEST_SHUTDOWN, MPI_COMM_WORLD);
+                            MPI_Send(&receive_array[0], 1, MPI_INT, Master, REQUEST_SHUTDOWN, MPI_COMM_WORLD);
                         else
                             MPI_Send(&receive_array, 1, MPI_ARRAY, neighbors[0], REQUEST_SHUTDOWN, MPI_COMM_WORLD);
 
@@ -472,6 +901,7 @@ void MPI_Peer(void)
 
                     default:
                         break;
+
                 } /* switch */
 
 
@@ -499,76 +929,173 @@ void MPI_Peer(void)
 
         while ((flag_shutdown == 0) || (Open_requests > 0 )){
 
+
             MPI_Recv(&receive, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-            //DPRINT("[Client: %d] received msg of type: %d from: %d \n", rank, status.MPI_TAG, status.MPI_SOURCE);
+
 
             switch (status.MPI_TAG){
 
                 case UPLOAD:
                     DPRINT("[Client: %d] received msg of type UPLOAD_ <%d>\n", rank, receive);
-                    
+
                     /* If I dont have the file add it */
                     if(!local_files[receive]){
                         Open_requests++;
-                        local_files[receive] = new_file(receive);
+                        local_files[receive] = new_file(receive, 1);
 
                         DPRINT("[Client: %d] send msg of type UPLOAD <%d> to master \n", rank, receive);
                         MPI_Send(&receive, 1, MPI_INT, Master, UPLOAD, MPI_COMM_WORLD);
                     }
                     else{
-                        
-                        DPRINT("[Client: %d] send msg of type UPLOAD_FAILED <%d> to coordinator \n", rank, receive);
-                        MPI_Send(&receive, 1, MPI_INT, 0, UPLOAD_FAILED, MPI_COMM_WORLD);
+
+                        DPRINT("[Client: %d] send msg of type UPLOAD_FAILED <%d> to Coordinator \n", rank, receive);
+                        //MPI_Send(&receive, 1, MPI_INT, 0, UPLOAD_FAILED, MPI_COMM_WORLD);
                     }
 
 
                     break;
 
+                case RETRIEVE:
+                    DPRINT("[Client: %d] received msg of type RETRIEVE <%d>\n", rank, receive);
+
+                    Open_requests++;
+                    file_id = receive;
+
+                    DPRINT("[Client: %d] send msg of type RETRIEVE <%d> to master \n", rank, receive);
+                    MPI_Send(&receive, 1, MPI_INT, Master, RETRIEVE, MPI_COMM_WORLD);
+
+                    MPI_Recv(&receive, 1, MPI_INT, Master, RETRIEVE_OK, MPI_COMM_WORLD, &status);
+
+                    if(receive > 0){
+                        if (!local_files[file_id]){
+                            local_files[file_id] = new_file(file_id, receive);
+                        }
+                        else{
+                            local_files[file_id]->version = receive;
+                        }
+                        DPRINT("[Client: %d] received msg of type RETRIEVE_OK <%d,%d>\n", rank, file_id, receive);
+                        IPRINT("CLIENT %d RETRIEVED VERSION %d OF %d\n", rank, receive, file_id);
+                    }else{
+                        DPRINT("[Client: %d] received msg of type RETRIEVE_FAILED <%d>\n", rank, file_id);
+                        IPRINT("CLIENT %d FAILED ΤΟ RETRIEVE %d\n", rank, file_id);
+                    }
+
+                    Open_requests--;
+
+                    break;
+
+                case UPDATE:
+                    DPRINT("[Client: %d] received msg of type UPDATE <%d>\n", rank, receive);
+
+                    Open_requests++;
+                    file_id = receive;
+
+                    receive_array[0] = file_id;
+                    receive_array[1] = 0;
+                    if (local_files[file_id]){
+                        receive_array[1] = local_files[file_id]->version;
+                    }
+
+                    DPRINT("[Client: %d] send msg of type UPDATE <%d> to master \n", rank, receive);
+                    MPI_Send(&receive_array, 1, MPI_ARRAY, Master, UPDATE, MPI_COMM_WORLD);
+
+                    break;
+
                 case UPLOAD_FAILED:
 
-                    DPRINT("[Client: %d] received msg of type UPLOAD_FAILED  from Master %d\n", rank, receive);
+                    DPRINT("[Client: %d] received msg of type UPLOAD_FAILED <%d> from Master \n", rank, receive);
 
-                    IPRINT("CLIENT %d FAILED TO UPLOADE FILE %d \n", rank, receive);
+                    IPRINT("CLIENT %d FAILED TO UPLOAD FILE %d \n", rank, receive);
+
+                    Open_requests--;
+
+                    break;
+
+                case UPDATE_OK:
+
+                    DPRINT("[Client: %d] received msg of type UPDATE_OK <%d> from Master \n", rank, receive);
+
+                    IPRINT("CLIENT %d UPDATED %d \n", rank, receive);
+                    local_files[receive]->version++;
+                    Open_requests--;
+
+                    break;
+
+                case UPDATE_FAILED:
+
+                    DPRINT("[Client: %d] received msg of type UPDATE_FAILED <%d> from Master \n", rank, receive);
+
+                    IPRINT("CLIENT %d UPDATE FAILED %d \n", rank, receive);
+
+                    Open_requests--;
+                    break;
+
+                case VERSION_OUTDATED:
+
+                    DPRINT("[Client: %d] received msg of type VERSION_OUTDATED <%d> from Master \n", rank, receive);
+
+                    IPRINT("CLIENT %d CANNOT UPDATE %d WITHOUT MOST RECENT VERSION\n", rank, receive);
 
                     Open_requests--;
                     break;
 
                 case REQUEST_SHUTDOWN:
-                    
-                    flag_shutdown = 1 ;
+
+                    flag_shutdown = 1;
                     DPRINT("[Client: %d] received msg of type REQUEST_SHUTDOWN_\n", rank);
-                    
+
                     break;
+
                 case UPLOAD_OK:
                     DPRINT("[Client: %d] received msg of type UPLOAD_OK <%d> \n", rank, receive);
-
                     IPRINT("CLIENT %d UPLOADED FILE %d \n", rank, receive);
 
                     Open_requests--;
+
+                    break;
+
+                case BARRIER:
+                    DPRINT("[Client: %d] received msg of type BARRIER \n", rank);
+                    flag_barrier++;
+
+                    break;
+
+                case RETRIEVE_OK:
+                    DPRINT("[Client: %d] received msg of type _RETRIEVE_OK_ <%d> \n", rank, receive);
+
+                    IPRINT("CLIENT %d RETRIEVE FILE %d \n", rank, receive);
+
+                    Open_requests--;
+
                     break;
 
                 default:
                     break;
 
-            }/* switch */
+            } /* switch */
+
+            if(flag_barrier && Open_requests == 0){
+                flag_barrier = 0;
+                DPRINT("[Client: %d] send msg of type BARRIER_ACK  \n", rank);
+                MPI_Send(&receive, 1, MPI_INT, 0, BARRIER_ACK, MPI_COMM_WORLD);
+            }
 
         }/* while */
 
         DPRINT("[Client: %d] send msg of type SHUTDOWN_OK  \n", rank);
         MPI_Send(&receive, 1, MPI_INT, 0, SHUTDOWN_OK, MPI_COMM_WORLD);
-        
-        DPRINT("[Client: %d] MY LOCAL FILES: ", rank);
+
+        RPRINT("[Client: %d] MY LOCAL FILES: ", rank);
 
         struct file *tmp;
-        for (i = 0; i < 100; i++)
+        for (i = 0; i < LOCAL_NUM; i++){
             if (local_files[i])
             {
                 tmp = local_files[i];
-                 DPRINT("file <%d> ", tmp->id);
+                 RPRINT("file <%d, %d> \n", tmp->id, tmp->version);
             }
-            
-        
-        DPRINT("\n");
+        }
+
 
         printf("[Client: %d] End of Service\n", rank);
 
@@ -578,7 +1105,7 @@ void MPI_Peer(void)
 
 
 
-void MPI_Master(struct master_struct *m)
+void MPI_Master(struct master_struct *m, int *n)
 {
     int k, i, j, tmp, L, flag = 0;
     int *long_paths;
@@ -592,9 +1119,7 @@ void MPI_Master(struct master_struct *m)
 
     srand(time(0));
 
-    DPRINT("[master: %d] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>I AM THE LEADER \n", *m->rank);
-    //DPRINT("[master: %d] send msg of type LEADER_ELECTION_DONE <%d> to: %d \n", *m->rank, *m->leader_id, 0);
-    //MPI_Send(m->leader_id, 1, MPI_INT, 0, LEADER_ELECTION_DONE, MPI_COMM_WORLD);
+    IPRINT("[Master: %d] >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>      I AM THE LEADER   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n", *m->rank);
 
 
     long_paths = (int*) malloc(sizeof(int) * L);
@@ -616,7 +1141,7 @@ void MPI_Master(struct master_struct *m)
                 break;
             }
         }
-        
+
         if(flag != 0){
             i--;
             continue;
@@ -624,6 +1149,11 @@ void MPI_Master(struct master_struct *m)
 
         long_paths[i] = m->ServersId[tmp];
     }
+
+    sortest_paths(long_paths, n, m->ServersId, L);
+
+
+
 
     for (i = 0; i < L; i++){
 
@@ -633,6 +1163,13 @@ void MPI_Master(struct master_struct *m)
         MPI_Recv(&response, 1, MPI_INT, long_paths[i], ACK, MPI_COMM_WORLD, &status);
         IPRINT("[Master: %d] %d  CONNECTED TO %d \n", rank, long_paths[i], rank);
     }
+
+    IPRINT("SORTEST PATH : ");
+    for (i = 0; i < NUM_SERVERS; i++){
+        if(n[i] > 0)
+            IPRINT("(%d->%d), ", m->ServersId[i], n[i]);
+    }
+    IPRINT("\n");
 
     for (i = 0; i < NUM_SERVERS; i++){
 
@@ -645,41 +1182,34 @@ void MPI_Master(struct master_struct *m)
         }
     }
 
-    DPRINT("[Master: %d] send msg of type LEADER_ELECTION_DONE to coordinator \n", rank);
+    DPRINT("[Master: %d] send msg of type LEADER_ELECTION_DONE to Coordinator \n", rank);
     MPI_Send(m->leader_id, 1, MPI_INT, 0, LEADER_ELECTION_DONE, MPI_COMM_WORLD);
-
-
 }
 
-
-/* 
-void MPI_Simple_Server(struct master_struct *m)
+void sortest_paths(int *connections, int *sortest_path_, int *neighbors, int l)
 {
-    int i=0;
-    //int long_path =-1;
-    int response;
+    int i, j;
+    int cur;
 
-    MPI_Status status;
+    for (i = 0; i < NUM_SERVERS; i++){
 
-    //while(i<1){
+        cur = neighbors[i];
 
-        MPI_Recv(&response, 1, MPI_INT,  MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-        DPRINT("[server: %d] received msg of type: %d from: %d \n", *m->rank, status.MPI_TAG, status.MPI_SOURCE);
-
-        switch (status.MPI_TAG)
-        {
-        case CONNECT:
-
-            //long_path = response;
-            MPI_Send(m->leader_id, 1, MPI_INT, *m->leader_id, ACK, MPI_COMM_WORLD);
-
-            DPRINT("[master: %d] send msg of type %d TO %d \n", *m->rank, ACK, *m->leader_id);
-            break;
-        
-        default:
-            break;
+        for (j = 0; j < l; j++){
+            if (cur == connections[j])
+                sortest_path_[i] = connections[j];
+            else
+                sortest_path_[i] = 0;
         }
+    }
 
-        i++;
-    //}
-} */
+    cur = 0;
+    for (i = (NUM_SERVERS-1); i >= 0; i--){
+        if (sortest_path_[i] > 0)
+            cur = sortest_path_[i];
+
+        sortest_path_[i] = cur;
+    }
+    sortest_path_[NUM_SERVERS-1] = 0;
+}
+

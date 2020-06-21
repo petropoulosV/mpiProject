@@ -53,6 +53,21 @@ struct registration *first_registration(struct Queue *Q)
 	return NULL;
 }
 
+int file_id_take(struct Queue *Q)
+{
+	int id;
+
+	if(!Q)
+		return 0;
+
+	id = Q->key;
+
+	if (id)
+		return id;
+	else
+		return 0;
+}
+
 int client_id(struct Queue *Q){
 
 	struct registration *reg;
@@ -66,6 +81,31 @@ int client_id(struct Queue *Q){
 		return 0;
 }
 
+int registration_type(struct Queue *Q)
+{
+
+	struct registration *reg;
+
+	reg = first_registration(Q);
+
+	if (reg)
+		return reg->type;
+	else
+		return 0;
+}
+
+int registration_counter(struct Queue *Q)
+{
+
+	struct registration *reg;
+
+	reg = first_registration(Q);
+
+	if (reg)
+		return reg->counter;
+	else
+		return 0;
+}
 
 int registration_decrease(struct Queue *Q)
 {
@@ -88,6 +128,22 @@ int registration_decrease(struct Queue *Q)
 	}
 
 	return reg->counter;
+}
+
+int registration_retrieve_update(struct Queue *Q, int version)
+{
+	struct registration *reg;
+
+	reg = first_registration(Q);
+
+	if (!reg)
+		return -1;
+	
+	if (version > reg->version){
+		reg->version = version;
+	}
+	
+	return reg->version;
 }
 
 void Enqueue(int id, int counter, int type, int versiom, struct Queue *Q)

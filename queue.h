@@ -30,4 +30,11 @@ int registration_decrease(struct Queue *Q);
 
 int client_id(struct Queue *Q);
 
+int registration_type(struct Queue *Q);
+int registration_retrieve(struct Queue *Q, int version);
+int registration_retrieve_update(struct Queue *Q, int version);
+int registration_counter(struct Queue *Q);
+
+int file_id_take(struct Queue *Q);
+
 #endif /* _QUEUE_H_ */

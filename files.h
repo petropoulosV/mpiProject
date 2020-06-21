@@ -14,6 +14,6 @@ struct file{
     int version;
 };
 
-struct file *new_file(int id);
+struct file *new_file(int id, int version);
 
 #endif /* _FILES_H_ */

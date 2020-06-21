@@ -10,7 +10,7 @@
 
 
 
-#define DEBUG
+//#define DEBUG
 
 #ifdef DEBUG
 #define DPRINT(...) fprintf(stderr, __VA_ARGS__);
@@ -26,16 +26,25 @@
 #define IPRINT(...)
 #endif /* INFO */
 
+#define RANDOM
+
+#ifdef RANDOM
+#define RPRINT(...) fprintf(stderr, __VA_ARGS__);
+#else /* RANDOM */
+#define RPRINT(...)
+#endif /* RANDOM */
+
 /* error reporting helpers */
 #define ERRX(ret, str) \
     do { fprintf(stderr, str "\n"); exit(ret); } while (0)
 
 
 #define BUFFER_SIZE 1024
+#define LOCAL_NUM 1000
 
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
-#define ACK 0
+#define ACK 100
 #define ERROR 1
 #define SERVER 2
 #define CLIENT 3
@@ -50,6 +59,23 @@
 #define SHUTDOWN_OK 12
 #define UPLOAD_ACK 13
 #define UPLOAD_OK 14
+#define RETRIEVE 15
+#define RETRIEVE_FAILED 16
+#define RETRIEVE_OK 17
+#define RETRIEVE_ACK 18
+#define UPDATE 19
+#define UPDATE_FAILED 20
+#define VERSION_CHECK 21
+#define VERSION_OUTDATED 22
+#define UPDATE_OK 23
+#define UPDATE_ACK 24
+#define LEAVE 25
+#define BARRIER 26
+#define BARRIER_ACK 27
+#define LEAVE_REQUEST 28
+#define LEAVE_CONFIRMATION 29
+#define TRANSFER 30
+#define LEAVE_ACK 31
 
 int rank, world_size, NUM_SERVERS;
 

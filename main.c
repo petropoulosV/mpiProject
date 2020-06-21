@@ -33,14 +33,14 @@ int main(int argc, char** argv){
 
     if(rank == 0){
 		// Coordinator
-		DPRINT("[rank: %d] Coordinator started\n", rank);
+        DPRINT("[Coord: %d] Coordinator started\n", rank);
 
         MPI_init(file);
 
     }
     else{
         // Peers
-        DPRINT("[rank: %d] Peer started\n", rank);
+        DPRINT("[Peer: %d] Peer started\n", rank);
         MPI_Peer();
     }
 
